@@ -1,5 +1,5 @@
 from __future__ import annotations
-from math import exp
+from math import tanh
 
 
 class Node:
@@ -70,10 +70,11 @@ class Node:
         res = Node(self.data + other.data, (self, other), "+")
 
         def _backward():
-            self._grad = 1 * res._grad
-            other._grad = 1 * res._grad
+            # Accumulate gradients using += to handle nodes used in multiple operations.
+            self._grad += 1 * res._grad
+            other._grad += 1 * res._grad
 
-        self._backward = _backward
+        res._backward = _backward
 
         return res
 
@@ -96,10 +97,11 @@ class Node:
         res = Node(self.data * other.data, (self, other), "*")
 
         def _backward():
-            self._grad = other.data * res._grad
-            other._grad = self.data * res._grad
+            # Accumulate gradients using += to handle nodes used in multiple operations.
+            self._grad += other.data * res._grad
+            other._grad += self.data * res._grad
 
-        self._backward = _backward
+        res._backward = _backward
 
         return res
 
@@ -118,15 +120,135 @@ class Node:
             with backward propagation configured to compute gradients using the
             tanh derivative formula.
         """
-        val = exp(2 * self.data) - 1 / exp(2 * self.data) + 1
+        val = tanh(self.data)
         res = Node(val, (self,), _op="tanh")
 
         def _backward():
-            self._grad = (1 - val**2) * res._grad
+            # Accumulate gradients using += to handle nodes used in multiple operations.
+            # Derivative of tanh: d(tanh(x))/dx = 1 - tanh²(x)
+            self._grad += (1 - val**2) * res._grad
 
         res._backward = _backward
 
         return res
+
+    def _topological_sort(self) -> list["Node"]:
+        """
+        Performs a topological sort of the computational graph using depth-first search.
+
+        Traverses the graph starting from this node and builds a topological ordering
+        where each node appears before its parent nodes. This ordering is useful for
+        backward propagation, ensuring gradients are computed in the correct order
+        (from output to inputs).
+
+        Returns:
+            A list of nodes in topological order, where each node appears before
+            its parent nodes. This ordering ensures that when traversing the list
+            in reverse, gradients can be computed correctly during backward propagation.
+        """
+        topo_ordering: list[Node] = []
+
+        # Set for O(1) membership lookup.
+        visited: set[Node] = set()
+
+        def build_topo(parent_node: Node):
+            """
+            Recursively builds the topological ordering using DFS.
+
+            Visits each node once, recursively processes all child nodes first,
+            then appends the current node to the ordering. This ensures a valid
+            topological order where dependencies (children) come before dependents (parents).
+            """
+            if parent_node not in visited:
+                visited.add(parent_node)
+                # Process all children first to ensure they appear before the parent.
+                for child_node in parent_node._prev:
+                    build_topo(child_node)
+                # Append parent after all children have been processed.
+                topo_ordering.append(parent_node)
+
+        build_topo(self)
+
+        return topo_ordering
+
+    def _collect_nodes(self) -> set["Node"]:
+        """
+        Collects all nodes in the computational graph starting from this node.
+
+        Returns:
+            A set of all nodes in the graph.
+        """
+        nodes: set[Node] = set()
+
+        def build(parent_node: Node):
+            """Recursively collects all nodes in the graph."""
+            if parent_node not in nodes:
+                nodes.add(parent_node)
+                for child_node in parent_node._prev:
+                    build(child_node)
+
+        build(self)
+        return nodes
+
+    def backpropagate(self, visualize: bool = False) -> None:
+        """
+        Performs backward propagation to compute gradients for all nodes.
+
+        This method executes the complete backward propagation algorithm to compute
+        gradients for all nodes in the computational graph starting from this node.
+        Optionally visualizes the graph before and after backpropagation.
+
+        The backpropagation process:
+        1. Reset all gradients to zero for clean runs.
+        2. Initialize this node's gradient to 1.0 (base case: d(output)/d(output) = 1).
+        3. Get a topological ordering of all nodes (children before parents).
+        4. Traverse nodes in reverse topological order (parents before children).
+        5. Call each node's _backward() function to propagate gradients to its children.
+
+        Args:
+            visualize: If True, visualizes the graph before and after backpropagation
+                      using graphviz. Requires graphviz to be installed.
+        """
+        # Optionally visualize the graph before backpropagation.
+        if visualize:
+            try:
+                from graph import draw_graph
+
+                graph = draw_graph(self)
+                graph.render("graph-before-backprop", view=True)
+            except ImportError:
+                print("Warning: graphviz not available, skipping visualization.")
+
+        # Reset all gradients to zero before backpropagation for clean runs.
+        nodes = self._collect_nodes()
+        for node in nodes:
+            node._grad = 0.0
+
+        # Base case: gradient of output node = d(output)/d(output) = 1.0.
+        self._grad = 1.0
+
+        # Sort the nodes so that child nodes come before parent nodes.
+        # Gradient calculation of a node requires gradients from its parent nodes
+        # to be computed first. By reversing the topological order, we ensure
+        # parents are processed before their children during backpropagation.
+        topo_order = self._topological_sort()
+
+        # Traverse nodes in reverse topological order (from output to inputs).
+        # This ensures that when we compute a node's gradient, all parent gradients
+        # have already been computed and are available.
+        for node in reversed(topo_order):
+            # Call the node's backward function to propagate gradients to its children.
+            node._backward()
+
+        # Optionally visualize the graph after backpropagation.
+        if visualize:
+            try:
+                from graph import draw_graph
+
+                graph = draw_graph(self)
+                graph.render("graph-after-backprop", view=True)
+            except ImportError:
+                print("Warning: graphviz not available, skipping visualization.")
 
 
 if __name__ == "__main__":

@@ -55,6 +55,9 @@ data/
 *.txt
 *.bin
 
+*.svg
+*.txt
+
 # Logs
 *.log
 logs/
