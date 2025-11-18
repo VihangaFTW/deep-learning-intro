@@ -42,6 +42,7 @@ ENV/
 
 # Model checkpoints and outputs
 out/
+outputs/
 *.pt
 *.pth
 *.ckpt

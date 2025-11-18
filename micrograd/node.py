@@ -1,5 +1,6 @@
 from __future__ import annotations
-from math import tanh
+from math import exp, tanh
+from pathlib import Path
 
 
 class Node:
@@ -51,22 +52,25 @@ class Node:
         """
         return f"Value(data={self.data})"
 
-    def __add__(self, other: Node) -> Node:
+    def __add__(self, other: Node | float) -> Node:
         """
         Overload the addition operator to create a new node.
 
-        Creates a new node representing the sum of this node and another node.
-        The new node's children are set to (self, other) and its operation is "+".
-        Sets up the backward propagation function to compute gradients for both
-        child nodes using the chain rule (gradient flows equally to both inputs).
+        Creates a new node representing the sum of this node and another node or float.
+        If other is a float, it is automatically converted to a Node. The new node's
+        children are set to (self, other) and its operation is "+". Sets up the backward
+        propagation function to compute gradients for both child nodes using the chain
+        rule (gradient flows equally to both inputs).
 
         Args:
-            other: The other node to add to this node.
+            other: The other node or float to add to this node.
 
         Returns:
             A new Node representing the sum of self and other, with backward
             propagation configured to propagate gradients to both inputs.
         """
+        other = other if isinstance(other, Node) else Node(other)
+
         res = Node(self.data + other.data, (self, other), "+")
 
         def _backward():
@@ -78,22 +82,40 @@ class Node:
 
         return res
 
-    def __mul__(self, other: Node) -> Node:
+    def __rmul__(self, other: Node | float) -> Node:
+        """
+        Overload the right multiplication operator to handle number * Node cases.
+
+        Enables multiplication when a number appears on the left side of a Node
+        (e.g., 2 * node). Delegates to __mul__ to handle the actual computation.
+
+        Args:
+            other: The number or Node to multiply with this node.
+
+        Returns:
+            A new Node representing the product of other and self.
+        """
+        return self * other
+
+    def __mul__(self, other: Node | float) -> Node:
         """
         Overload the multiplication operator to create a new node.
 
-        Creates a new node representing the product of this node and another node.
-        The new node's children are set to (self, other) and its operation is "*".
-        Sets up the backward propagation function to compute gradients for both
-        child nodes using the product rule (d(xy)/dx = y, d(xy)/dy = x).
+        Creates a new node representing the product of this node and another node or float.
+        If other is a float, it is automatically converted to a Node. The new node's
+        children are set to (self, other) and its operation is "*". Sets up the backward
+        propagation function to compute gradients for both child nodes using the product
+        rule (d(xy)/dx = y, d(xy)/dy = x).
 
         Args:
-            other: The other node to multiply with this node.
+            other: The other node or float to multiply with this node.
 
         Returns:
             A new Node representing the product of self and other, with backward
             propagation configured to propagate gradients using the product rule.
         """
+        other = other if isinstance(other, Node) else Node(other)
+
         res = Node(self.data * other.data, (self, other), "*")
 
         def _backward():
@@ -105,7 +127,108 @@ class Node:
 
         return res
 
-    def tanh(self) -> Node:
+    def __pow__(self, other: float | int) -> Node:
+        """
+        Overload the power operator to raise this node to a constant power.
+
+        Creates a new node representing this node raised to the power of other.
+        The new node's child is set to (self,) and its operation is "**{other}".
+        Sets up the backward propagation function using the power rule:
+        d(x^n)/dx = n * x^(n-1).
+
+        Args:
+            other: The exponent (must be an int or float).
+
+        Returns:
+            A new Node representing self raised to the power of other, with backward
+            propagation configured using the power rule.
+
+        Raises:
+            AssertionError: If other is not an int or float.
+        """
+        assert isinstance(other, (int, float))
+
+        res = Node(self.data**other, (self,), f"**{other}")
+
+        def _backward():
+            # Accumulate gradients using += to handle nodes used in multiple operations.
+            # Power rule: d(x^n)/dx = n * x^(n-1)
+            self._grad += other * (self.data ** (other - 1)) * res._grad
+
+        res._backward = _backward
+
+        return res
+
+    def __truediv__(self, other: Node) -> Node:
+        """
+        Overload the division operator to divide this node by another node.
+
+        Implements division as multiplication by the reciprocal: self / other = self * other^(-1).
+        This reuses the multiplication and power operations, ensuring consistent
+        backward propagation behavior.
+
+        Args:
+            other: The node to divide by (divisor).
+
+        Returns:
+            A new Node representing self divided by other.
+        """
+        return self * other**-1
+
+    def exp(self) -> Node:
+        """
+        Compute the exponential (e^x) of this node.
+
+        Creates a new node representing e raised to the power of this node's data value.
+        The new node's child is set to (self,) and its operation is "exp". Sets up the
+        backward propagation function using the derivative of exp: d(e^x)/dx = e^x.
+
+        Returns:
+            A new Node representing exp(self.data) with this node as its child,
+            with backward propagation configured using the exponential derivative.
+        """
+        res = Node(exp(self.data), (self,), "exp")
+
+        def _backward():
+            # Accumulate gradients using += to handle nodes used in multiple operations.
+            # Derivative of exp: d(e^x)/dx = e^x
+            self._grad += res.data * res._grad
+
+        res._backward = _backward
+
+        return res
+
+    def __neg__(self) -> Node:
+        """
+        Overload the unary negation operator to negate this node.
+
+        Implements negation as multiplication by -1: -self = self * (-1).
+        This reuses the multiplication operation, ensuring consistent backward
+        propagation behavior.
+
+        Returns:
+            A new Node representing the negation of self.
+        """
+        return self * -1
+
+    def __sub__(self, other: Node | float) -> Node:
+        """
+        Overload the subtraction operator to subtract another node or float from this node.
+
+        Implements subtraction as addition of the negated value: self - other = self + (-other).
+        If other is a float, it is automatically converted to a Node through the negation
+        and addition operations. This reuses the addition and negation operations, ensuring
+        consistent backward propagation behavior.
+
+        Args:
+            other: The node or float to subtract from this node.
+
+        Returns:
+            A new Node representing self minus other.
+        """
+        return self + (-other)
+
+    def tanh(self, exp: bool = False) -> Node:
         """
         Compute the hyperbolic tangent of this node.
 
@@ -115,12 +238,26 @@ class Node:
         Sets up the backward propagation function to compute the gradient using
         the derivative of tanh: d(tanh(x))/dx = 1 - tanh²(x).
 
+        The computation can be performed in two ways:
+        - If exp=False (default): Uses the math.tanh() function directly for efficiency.
+        - If exp=True: Computes tanh via exponential operations: tanh(x) = (e^(2x) - 1) / (e^(2x) + 1).
+
+        Args:
+            exp: If True, computes tanh using exponential operations instead of the direct
+                 math.tanh() function. Defaults to False.
+
         Returns:
             A new Node representing tanh(self.data) with this node as its child,
             with backward propagation configured to compute gradients using the
             tanh derivative formula.
         """
-        val = tanh(self.data)
+        if exp:
+            e = (2 * self).exp()
+            tanh_via_exp = (e - 1) / (e + 1)
+            val = tanh_via_exp.data
+        else:
+            val = tanh(self.data)
+
         res = Node(val, (self,), _op="tanh")
 
         def _backward():
@@ -214,8 +351,12 @@ class Node:
             try:
                 from graph import draw_graph
 
+                # Create outputs directory if it doesn't exist.
+                output_dir = Path("outputs")
+                output_dir.mkdir(exist_ok=True)
+
                 graph = draw_graph(self)
-                graph.render("graph-before-backprop", view=True)
+                graph.render(output_dir / "graph-before-backprop", view=True)
             except ImportError:
                 print("Warning: graphviz not available, skipping visualization.")
 
@@ -245,8 +386,12 @@ class Node:
             try:
                 from graph import draw_graph
 
+                # Create outputs directory if it doesn't exist.
+                output_dir = Path("outputs")
+                output_dir.mkdir(exist_ok=True)
+
                 graph = draw_graph(self)
-                graph.render("graph-after-backprop", view=True)
+                graph.render(output_dir / "graph-after-backprop", view=True)
             except ImportError:
                 print("Warning: graphviz not available, skipping visualization.")
 

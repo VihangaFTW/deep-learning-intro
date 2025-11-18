@@ -22,7 +22,7 @@ def main() -> None:
     x1w1x2w2.label = "x1*w1 + x2*w2"
     n = x1w1x2w2 + b
     n.label = "n"
-    o = n.tanh()
+    o = n.tanh(True)
     o.label = "o"
 
     print(o)
