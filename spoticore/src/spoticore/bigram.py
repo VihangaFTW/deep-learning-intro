@@ -3,6 +3,9 @@ import matplotlib.pyplot as plt
 import torch
 
 
+SAMPLE_SEED = 534150593
+
+
 def build_vocabulary(lyrics: list[str]) -> tuple[dict[str, int], dict[int, str], int]:
     """
     Build vocabulary from lyrics and create string-to-index and index-to-string mappings.
@@ -148,6 +151,62 @@ def plot_bigram_heatmap(
     plt.show()
 
 
+def sampling(N: torch.Tensor, itos: dict[int, str]) -> list[str]:
+    """
+    Generate text samples using bigram probability distributions.
+
+    Samples characters sequentially based on bigram probabilities, starting from
+    the start token and continuing until the end token is sampled. Generates
+    20 sample sequences and prints each one.
+
+    Args:
+        N: 2D tensor of bigram frequency counts (vocab_size x vocab_size).
+        itos: Index-to-string mapping dictionary.
+
+    Returns:
+        List of characters from the last generated sample sequence.
+    """
+    # Initialize random number generator with fixed seed for reproducibility.
+    generator = torch.Generator().manual_seed(SAMPLE_SEED)
+
+    # Convert bigram counts to float for probability calculations.
+    P = N.float()
+    # Normalize each row to convert counts into probabilities.
+    # Each row sums to 1.0, representing the probability distribution of the next character given the current character.
+    P /= P.sum(1, keepdim=True)
+
+    print(P[0].sum())
+
+    # Generate 20 samples of text sequences.
+    for i in range(20):
+        outputs = []
+        # Start sampling from index 0, which represents the start token "*".
+        sample_idx = 0
+        while True:
+            # Get the probability distribution for the next character given the current character.
+            row_probs = P[sample_idx]
+
+            # Sample the next character index from the probability distribution.
+            # multinomial samples according to the probabilities in row_probs.
+            sample_idx = int(
+                torch.multinomial(
+                    row_probs, num_samples=1, replacement=True, generator=generator
+                ).item()
+            )
+
+            # Convert the sampled index to its corresponding character and append to outputs.
+            outputs.append(itos[sample_idx])
+
+            # Stop sampling when the end token "*" (index 0) is chosen.
+            if not sample_idx:
+                # index 0 means end character * chosen
+                break
+
+        print(f"\nIteration {i}:\n", "".join(outputs))
+
+    return outputs
+
+
 def main() -> None:
     """Main function to process lyrics and create bigram heatmap."""
     # Load lyrics.
@@ -167,7 +226,11 @@ def main() -> None:
     print("Done processing.")
 
     # Visualize.
-    plot_bigram_heatmap(N, itos, vocab_size)
+    # plot_bigram_heatmap(N, itos, vocab_size)
+
+    choices = sampling(N, itos)
+
+    print(f"{choices=}")
 
 
 if __name__ == "__main__":
