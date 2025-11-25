@@ -1,4 +1,4 @@
-from reader import process_csv_file
+from reader import read_all_lyrics
 import matplotlib.pyplot as plt
 import torch
 
@@ -6,7 +6,9 @@ import torch
 SAMPLE_SEED = 534150593
 
 
-def build_vocabulary(lyrics: list[str]) -> tuple[dict[str, int], dict[int, str], int]:
+def build_vocab_from_lyrics(
+    lyrics: list[str],
+) -> tuple[dict[str, int], dict[int, str], int]:
     """
     Build vocabulary from lyrics and create string-to-index and index-to-string mappings.
 
@@ -253,10 +255,10 @@ def calculate_nll(N: torch.Tensor, lyrics: list[str], stoi: dict[str, int]) -> f
 def main() -> None:
     """Main function to process lyrics and create bigram heatmap."""
     # Load lyrics.
-    lyrics = process_csv_file()
+    lyrics = read_all_lyrics()
 
     # Build vocabulary.
-    stoi, itos, vocab_size = build_vocabulary(lyrics)
+    stoi, itos, vocab_size = build_vocab_from_lyrics(lyrics)
     print(f"Vocabulary size: {vocab_size}")
     print(f"Vocabulary: {stoi}")
 

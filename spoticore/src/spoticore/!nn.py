@@ -1,5 +1,5 @@
-from bigram import lyrics_to_indices, build_vocabulary, SAMPLE_SEED
-from reader import process_csv_file
+from bigram import lyrics_to_indices, build_vocab_from_lyrics, SAMPLE_SEED
+from reader import read_all_lyrics
 import torch
 import torch.nn as nn
 
@@ -25,9 +25,9 @@ def create_bigram_set() -> tuple[
         stoi is string-to-index mapping dictionary.
         itos is index-to-string mapping dictionary.
     """
-    lyrics = process_csv_file()
+    lyrics = read_all_lyrics()
 
-    stoi, itos, vocab_size = build_vocabulary(lyrics)
+    stoi, itos, vocab_size = build_vocab_from_lyrics(lyrics)
 
     all_indices: torch.Tensor = lyrics_to_indices(lyrics, stoi)
 
