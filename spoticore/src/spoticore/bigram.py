@@ -1,29 +1,30 @@
-from reader import read_all_lyrics
+from reader import read_all_unique_words
 import matplotlib.pyplot as plt
 import torch
 
 from constants import SAMPLE_SEED
 
 
-def build_vocab_from_lyrics(
-    lyrics: list[str],
+def build_vocab_from_words(
+    words: list[str],
 ) -> tuple[dict[str, int], dict[int, str], int]:
     """
-    Build vocabulary from lyrics and create string-to-index and index-to-string mappings.
+    Build vocabulary from words and create string-to-index and index-to-string mappings.
+
+    Uses "." as the special start/end token at index 0 for consistency with MLP model.
 
     Args:
-        lyrics: List of lyrics strings.
+        words: List of unique words.
 
     Returns:
         Tuple of (stoi dictionary, itos dictionary, vocab_size).
     """
-    whole_text = "".join(lyrics)
-    chars = sorted(list(set(whole_text)))
+    # Get all unique characters from the words.
+    chars = sorted(list(set(".".join(words))))
 
-    # Create mappings with special token "*" at index 0.
-    stoi: dict[str, int] = {"*": 0}
-    for i, char in enumerate(chars):
-        stoi[char] = i + 1
+    # Create mappings with special token "." at index 0.
+    stoi: dict[str, int] = {char: i for i, char in enumerate(chars)}
+    stoi["."] = 0
 
     itos: dict[int, str] = {i: char for char, i in stoi.items()}
     vocab_size = len(stoi)
@@ -31,32 +32,32 @@ def build_vocab_from_lyrics(
     return stoi, itos, vocab_size
 
 
-def lyrics_to_indices(
-    lyrics: list[str], stoi: dict[str, int], progress_interval: int = 10000
+def words_to_indices(
+    words: list[str], stoi: dict[str, int], progress_interval: int = 10000
 ) -> torch.Tensor:
     """
-    Convert all lyrics to character indices with start/end tokens.
+    Convert all words to character indices with start/end tokens.
 
     Args:
-        lyrics: List of lyrics strings.
+        words: List of words.
         stoi: String-to-index mapping dictionary.
-        progress_interval: Print progress every N songs.
+        progress_interval: Print progress every N words.
 
     Returns:
         Tensor of character indices.
     """
-    print(f"Processing {len(lyrics)} songs...")
+    print(f"Processing {len(words)} words...")
     all_indices = []
 
-    for i, sample in enumerate(lyrics):
+    for i, word in enumerate(words):
         if (i + 1) % progress_interval == 0:
-            print(f"Processed {i + 1}/{len(lyrics)} songs...")
+            print(f"Processed {i + 1}/{len(words)} words...")
 
         # Add start token, character indices, and end token.
-        sample_indices = (
-            [stoi["*"]] + [stoi.get(c, stoi["*"]) for c in sample] + [stoi["*"]]
+        word_indices = (
+            [stoi["."]] + [stoi.get(c, stoi["."]) for c in word] + [stoi["."]]
         )
-        all_indices.extend(sample_indices)
+        all_indices.extend(word_indices)
 
     return torch.tensor(all_indices, dtype=torch.int32)
 
@@ -181,7 +182,7 @@ def sampling(N: torch.Tensor, itos: dict[int, str]) -> None:
     # Generate 20 samples of text sequences.
     for i in range(20):
         outputs = []
-        # Start sampling from index 0, which represents the start token "*".
+        # Start sampling from index 0, which represents the start token ".".
         sample_idx = 0
         while True:
             # Get the probability distribution for the next character given the current character.
@@ -198,24 +199,24 @@ def sampling(N: torch.Tensor, itos: dict[int, str]) -> None:
             # Convert the sampled index to its corresponding character and append to outputs.
             outputs.append(itos[sample_idx])
 
-            # Stop sampling when the end token "*" (index 0) is chosen.
+            # Stop sampling when the end token "." (index 0) is chosen.
             if not sample_idx:
-                # index 0 means end character * chosen
+                # index 0 means end character . chosen.
                 break
 
         print(f"\nIteration {i}:\n", "".join(outputs))
 
 
-def calculate_nll(N: torch.Tensor, lyrics: list[str], stoi: dict[str, int]) -> float:
+def calculate_nll(N: torch.Tensor, words: list[str], stoi: dict[str, int]) -> float:
     """
-    Calculate the negative log likelihood of lyrics under the bigram model.
+    Calculate the negative log likelihood of words under the bigram model.
 
     Computes the average negative log likelihood per character using smoothed
     bigram probabilities. Applies add-one smoothing to avoid zero probabilities.
 
     Args:
         N: 2D tensor of bigram frequency counts (vocab_size x vocab_size).
-        lyrics: List of lyrics strings to evaluate.
+        words: List of words to evaluate.
         stoi: String-to-index mapping dictionary.
 
     Returns:
@@ -229,9 +230,9 @@ def calculate_nll(N: torch.Tensor, lyrics: list[str], stoi: dict[str, int]) -> f
     # Convert to log probabilities for numerical stability.
     log_P = torch.log(P)
 
-    # Convert all lyrics to indices using the existing function.
-    indices_tensor = lyrics_to_indices(
-        lyrics, stoi, progress_interval=len(lyrics) + 1
+    # Convert all words to indices using the existing function.
+    indices_tensor = words_to_indices(
+        words, stoi, progress_interval=len(words) + 1
     ).long()
 
     # Create bigram pairs using slicing.
@@ -252,17 +253,17 @@ def calculate_nll(N: torch.Tensor, lyrics: list[str], stoi: dict[str, int]) -> f
 
 
 def main() -> None:
-    """Main function to process lyrics and create bigram heatmap."""
-    # Load lyrics.
-    lyrics = read_all_lyrics()
+    """Main function to process words and create bigram heatmap."""
+    # Load unique words from lyrics.
+    words = read_all_unique_words()
 
     # Build vocabulary.
-    stoi, itos, vocab_size = build_vocab_from_lyrics(lyrics)
+    stoi, itos, vocab_size = build_vocab_from_words(words)
     print(f"Vocabulary size: {vocab_size}")
     print(f"Vocabulary: {stoi}")
 
-    # Convert lyrics to indices.
-    indices_tensor = lyrics_to_indices(lyrics, stoi)
+    # Convert words to indices.
+    indices_tensor = words_to_indices(words, stoi)
 
     # Count bigrams.
     N = count_bigrams(indices_tensor, vocab_size)
@@ -274,9 +275,8 @@ def main() -> None:
 
     sampling(N, itos)
 
-    # calculate how well the model predicts a given lyric
-
-    nll = calculate_nll(N, lyrics, stoi)
+    # Calculate how well the model predicts a given word.
+    nll = calculate_nll(N, words, stoi)
     print(f"{nll=}")
 
 

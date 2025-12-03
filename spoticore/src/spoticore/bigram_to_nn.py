@@ -1,5 +1,5 @@
-from bigram import lyrics_to_indices, build_vocab_from_lyrics
-from reader import read_all_lyrics
+from bigram import words_to_indices, build_vocab_from_words
+from reader import read_all_unique_words
 import torch
 import torch.nn as nn
 
@@ -17,7 +17,7 @@ def create_bigram_set() -> tuple[
     """
     Create input-output pairs for bigram language modeling.
 
-    Processes lyrics, builds vocabulary, converts to indices, and creates
+    Processes words, builds vocabulary, converts to indices, and creates
     pairs of consecutive characters for training a bigram model.
 
     Returns:
@@ -28,11 +28,11 @@ def create_bigram_set() -> tuple[
         stoi is string-to-index mapping dictionary.
         itos is index-to-string mapping dictionary.
     """
-    lyrics = read_all_lyrics()
+    words = read_all_unique_words()
 
-    stoi, itos, vocab_size = build_vocab_from_lyrics(lyrics)
+    stoi, itos, vocab_size = build_vocab_from_words(words)
 
-    all_indices: torch.Tensor = lyrics_to_indices(lyrics, stoi)
+    all_indices: torch.Tensor = words_to_indices(words, stoi)
 
     return all_indices[:-1], all_indices[1:], vocab_size, stoi, itos
 
@@ -179,7 +179,7 @@ def sampling(
     Generate text samples using the trained neural network model.
 
     Samples characters sequentially based on the model's probability distributions,
-    starting from the start token "*" (index 0) and continuing until the end token
+    starting from the start token "." (index 0) and continuing until the end token
     is sampled. Generates multiple sample sequences and prints each one.
 
     Args:
@@ -204,7 +204,7 @@ def sampling(
     # Generate text samples.
     for i in range(num_samples):
         outputs = []
-        # Start sampling from index 0, which represents the start token "*".
+        # Start sampling from index 0, which represents the start token ".".
         sample_idx = 0
 
         while True:
@@ -231,7 +231,7 @@ def sampling(
             # Convert the sampled index to its corresponding character and append to outputs.
             outputs.append(itos[sample_idx])
 
-            # Stop sampling when the end token "*" (index 0) is chosen.
+            # Stop sampling when the end token "." (index 0) is chosen.
             if not sample_idx:
                 break
 
